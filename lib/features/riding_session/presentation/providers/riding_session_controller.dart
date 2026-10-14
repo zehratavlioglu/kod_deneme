@@ -37,6 +37,10 @@ class RidingSessionController extends Notifier<RidingSessionState> {
     state = state.copyWith(isLoading: true, clearError: true);
     final permissions = await [
       Permission.microphone,
+      // Nearby Connections requires location permission through Android 11.
+      // The manifest caps it at API 31, so modern Android versions do not
+      // receive an unnecessary location permission prompt.
+      Permission.locationWhenInUse,
       Permission.bluetoothScan,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
@@ -60,12 +64,18 @@ class RidingSessionController extends Notifier<RidingSessionState> {
   }
 
   Future<void> stop() async {
-    await _guard(_platform.stopRidingMode);
+    final previous = state;
     state = state.copyWith(
       isRiding: false,
       connectionState: 'idle',
       clearPeerName: true,
     );
+    try {
+      await _platform.stopRidingMode();
+      state = state.copyWith(clearError: true);
+    } catch (error) {
+      state = previous.copyWith(error: _friendlyError(error));
+    }
   }
 
   Future<void> setAutoMatch(bool value) async {
@@ -82,7 +92,19 @@ class RidingSessionController extends Notifier<RidingSessionState> {
     state = state.copyWith(isMuted: value);
   }
 
-  Future<void> disconnect() => _guard(_platform.disconnect);
+  Future<void> disconnect() async {
+    final previous = state;
+    state = state.copyWith(
+      connectionState: 'disconnected',
+      clearPeerName: true,
+      clearError: true,
+    );
+    try {
+      await _platform.disconnect();
+    } catch (error) {
+      state = previous.copyWith(error: _friendlyError(error));
+    }
+  }
 
   Future<void> _guard(Future<void> Function() action) async {
     try {

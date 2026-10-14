@@ -1,10 +1,14 @@
 package com.lideatech.ridelink.bridge
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.lideatech.ridelink.core.RideLinkRuntime
 import io.flutter.plugin.common.EventChannel
 
 class RideLinkEventHandler(private val context: Context) : EventChannel.StreamHandler {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
     private var sink: EventChannel.EventSink? = null
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -19,7 +23,11 @@ class RideLinkEventHandler(private val context: Context) : EventChannel.StreamHa
     }
 
     fun emit(event: Map<String, Any?>) {
-        sink?.success(event)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            sink?.success(event)
+        } else {
+            mainHandler.post { sink?.success(event) }
+        }
     }
 
     companion object {

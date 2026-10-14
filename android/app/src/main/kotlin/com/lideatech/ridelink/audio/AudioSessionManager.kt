@@ -26,6 +26,7 @@ class AudioSessionManager(
     private val captureExecutor = Executors.newSingleThreadExecutor()
     private val playbackExecutor = Executors.newSingleThreadExecutor()
     private val running = AtomicBoolean(false)
+    private val generation = AtomicInteger()
     private val muted = AtomicBoolean(false)
     private val sent = AtomicInteger()
     private val received = AtomicInteger()
@@ -39,13 +40,20 @@ class AudioSessionManager(
 
     fun start(debugPhoneAudio: Boolean, id: UUID) {
         if (!running.compareAndSet(false, true)) return
+        val currentGeneration = generation.incrementAndGet()
         sessionId = id
+        nextSequence = 0
+        expectedSequence = null
+        sent.set(0)
+        received.set(0)
+        lost.set(0)
+        synchronized(jitter) { jitter.clear() }
         try {
             check(devices.selectCommunicationRoute(debugPhoneAudio)) { "AUDIO_ROUTE_UNAVAILABLE" }
             codec.start()
             playback.start()
             val recorder = capture.start()
-            captureExecutor.execute { captureLoop(recorder) }
+            captureExecutor.execute { captureLoop(recorder, currentGeneration) }
         } catch (error: Throwable) {
             running.set(false)
             stopResources()
@@ -64,19 +72,21 @@ class AudioSessionManager(
             jitter[packet.sequence] = packet
             while (jitter.size > MAX_JITTER_PACKETS) jitter.pollFirstEntry()
         }
-        playbackExecutor.execute(::drainJitter)
+        val currentGeneration = generation.get()
+        playbackExecutor.execute { drainJitter(currentGeneration) }
     }
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        generation.incrementAndGet()
         stopResources()
     }
 
-    private fun captureLoop(recorder: AudioRecord) {
+    private fun captureLoop(recorder: AudioRecord, currentGeneration: Int) {
         val frame = ByteArray(AudioCodecManager.FRAME_BYTES)
-        while (running.get()) {
+        while (isCurrent(currentGeneration)) {
             var offset = 0
-            while (offset < frame.size && running.get()) {
+            while (offset < frame.size && isCurrent(currentGeneration)) {
                 val count = recorder.read(frame, offset, frame.size - offset, AudioRecord.READ_BLOCKING)
                 if (count <= 0) {
                     onError("AUDIO_RECORD_READ_FAILED:$count")
@@ -85,7 +95,7 @@ class AudioSessionManager(
                 }
                 offset += count
             }
-            if (!running.get() || muted.get()) continue
+            if (!isCurrent(currentGeneration) || muted.get()) continue
             val timestamp = System.nanoTime() / 1_000L
             try {
                 codec.encode(frame, timestamp)?.let { opus ->
@@ -100,8 +110,8 @@ class AudioSessionManager(
         }
     }
 
-    private fun drainJitter() {
-        while (running.get()) {
+    private fun drainJitter(currentGeneration: Int) {
+        while (isCurrent(currentGeneration)) {
             val packet = synchronized(jitter) {
                 if (jitter.size < TARGET_JITTER_PACKETS) return
                 jitter.pollFirstEntry()?.value
@@ -122,6 +132,8 @@ class AudioSessionManager(
         }
     }
 
+    private fun isCurrent(value: Int): Boolean = running.get() && generation.get() == value
+
     private fun report() = onTelemetry(
         Telemetry(sent.get(), received.get(), lost.get(), synchronized(jitter) { jitter.size }),
     )
@@ -135,7 +147,7 @@ class AudioSessionManager(
     }
 
     companion object {
-        private const val TARGET_JITTER_PACKETS = 3
-        private const val MAX_JITTER_PACKETS = 10
+        private const val TARGET_JITTER_PACKETS = 2
+        private const val MAX_JITTER_PACKETS = 5
     }
 }

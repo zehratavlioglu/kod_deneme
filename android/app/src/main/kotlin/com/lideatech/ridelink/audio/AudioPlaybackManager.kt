@@ -8,6 +8,7 @@ import android.media.AudioTrack
 class AudioPlaybackManager {
     private var track: AudioTrack? = null
 
+    @Synchronized
     fun start() {
         val minBuffer = AudioTrack.getMinBufferSize(
             AudioCodecManager.SAMPLE_RATE,
@@ -30,7 +31,7 @@ class AudioPlaybackManager {
                     .build(),
             )
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(maxOf(minBuffer * 2, AudioCodecManager.FRAME_BYTES * 6))
+            .setBufferSizeInBytes(maxOf(minBuffer, AudioCodecManager.FRAME_BYTES * 4))
             .build()
             .also {
                 check(it.state == AudioTrack.STATE_INITIALIZED) { "AUDIO_TRACK_INITIALIZATION_FAILED" }
@@ -40,11 +41,13 @@ class AudioPlaybackManager {
             }
     }
 
+    @Synchronized
     fun write(pcm: ByteArray) {
         val written = track?.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING) ?: -1
         check(written >= 0) { "AUDIO_TRACK_WRITE_FAILED:$written" }
     }
 
+    @Synchronized
     fun stop() {
         runCatching { track?.stop() }
         runCatching { track?.flush() }

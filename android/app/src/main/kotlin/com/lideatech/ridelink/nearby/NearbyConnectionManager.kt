@@ -13,8 +13,17 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import java.io.BufferedInputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.EOFException
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.util.UUID
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class NearbyConnectionManager(
     context: Context,
@@ -23,9 +32,18 @@ class NearbyConnectionManager(
     private val client = Nearby.getConnectionsClient(context.applicationContext)
     private val peers = ConcurrentHashMap<String, NearbyPeer>()
     private val localToken = UUID.randomUUID().toString().replace("-", "").take(16)
-    private var running = false
+    @Volatile private var running = false
     private var autoMatch = false
-    private var activeEndpoint: String? = null
+    @Volatile private var activeEndpoint: String? = null
+    private val audioStreamLock = Any()
+    private val streamExecutor = Executors.newCachedThreadPool()
+    private val audioWriterExecutor = Executors.newSingleThreadExecutor()
+    private val outgoingAudioFrames = ArrayBlockingQueue<ByteArray>(AUDIO_QUEUE_CAPACITY)
+    private val incomingStreams = ConcurrentHashMap<Long, Payload>()
+    private var outgoingAudioEndpoint: String? = null
+    private var outgoingAudioPayload: Payload? = null
+    private var outgoingAudioData: DataOutputStream? = null
+    private var outgoingAudioGeneration = 0
 
     fun setAutoMatch(enabled: Boolean) {
         autoMatch = enabled
@@ -58,16 +76,19 @@ class NearbyConnectionManager(
 
     fun stop() {
         running = false
+        activeEndpoint = null
+        resetAudioStreams()
         client.stopAdvertising()
         client.stopDiscovery()
         client.stopAllEndpoints()
-        activeEndpoint = null
         peers.clear()
     }
 
     fun disconnect(endpointId: String? = activeEndpoint) {
-        endpointId?.let(client::disconnectFromEndpoint)
+        val endpoint = endpointId ?: activeEndpoint
         activeEndpoint = null
+        resetAudioStreams()
+        endpoint?.let(client::disconnectFromEndpoint)
     }
 
     fun send(bytes: ByteArray): Boolean {
@@ -76,6 +97,131 @@ class NearbyConnectionManager(
             fail("PAYLOAD_SEND_FAILED", it)
         }
         return true
+    }
+
+    fun sendAudio(bytes: ByteArray): Boolean {
+        if (!running) return false
+        val endpoint = activeEndpoint ?: return false
+        synchronized(audioStreamLock) {
+            // The endpoint may have been cleared while this capture frame was waiting
+            // for the stream lock during disconnect.
+            if (!running || activeEndpoint != endpoint) return false
+            if (outgoingAudioData == null || outgoingAudioEndpoint != endpoint) {
+                detachOutgoingAudioStreamLocked()?.close()
+                val input = PipedInputStream(STREAM_PIPE_BYTES)
+                val output = DataOutputStream(PipedOutputStream(input))
+                val payload = Payload.fromStream(input)
+                val generation = ++outgoingAudioGeneration
+                outgoingAudioEndpoint = endpoint
+                outgoingAudioPayload = payload
+                outgoingAudioData = output
+                outgoingAudioFrames.clear()
+                audioWriterExecutor.execute {
+                    writeAudioStream(endpoint, payload, output, generation)
+                }
+                client.sendPayload(endpoint, payload).addOnFailureListener {
+                    fail("AUDIO_STREAM_SEND_FAILED", it)
+                    closeOutgoingAudioStream(generation)
+                }
+            }
+        }
+        // Capture must never wait for transport. When Samsung is briefly slower,
+        // discard the oldest queued frame and keep the newest real-time audio.
+        while (!outgoingAudioFrames.offer(bytes)) outgoingAudioFrames.poll()
+        return true
+    }
+
+    private fun writeAudioStream(
+        endpoint: String,
+        payload: Payload,
+        output: DataOutputStream,
+        generation: Int,
+    ) {
+        try {
+            while (isOutgoingAudioStream(endpoint, generation)) {
+                val bytes = outgoingAudioFrames.poll(WRITER_POLL_MS, TimeUnit.MILLISECONDS)
+                    ?: continue
+                output.writeInt(bytes.size)
+                output.write(bytes)
+                output.flush()
+            }
+        } catch (error: Throwable) {
+            if (isOutgoingAudioStream(endpoint, generation)) {
+                fail("AUDIO_STREAM_WRITE_FAILED", Exception(error))
+            }
+        } finally {
+            closeOutgoingAudioStream(generation)
+            runCatching { output.close() }
+            runCatching { payload.close() }
+        }
+    }
+
+    private fun isOutgoingAudioStream(endpoint: String, generation: Int): Boolean =
+        synchronized(audioStreamLock) {
+            running && activeEndpoint == endpoint && outgoingAudioGeneration == generation
+        }
+
+    private data class AudioStreamResources(
+        val output: DataOutputStream?,
+        val payload: Payload?,
+    ) {
+        fun close() {
+            runCatching { output?.close() }
+            runCatching { payload?.close() }
+        }
+    }
+
+    private fun detachOutgoingAudioStreamLocked(): AudioStreamResources? {
+        if (outgoingAudioData == null && outgoingAudioPayload == null) return null
+        val resources = AudioStreamResources(outgoingAudioData, outgoingAudioPayload)
+        outgoingAudioData = null
+        outgoingAudioPayload = null
+        outgoingAudioEndpoint = null
+        outgoingAudioFrames.clear()
+        return resources
+    }
+
+    private fun closeOutgoingAudioStream(expectedGeneration: Int? = null) {
+        val resources = synchronized(audioStreamLock) {
+            if (expectedGeneration != null && outgoingAudioGeneration != expectedGeneration) {
+                return
+            }
+            outgoingAudioGeneration++
+            detachOutgoingAudioStreamLocked()
+        }
+        resources?.close()
+    }
+
+    private fun resetAudioStreams() {
+        closeOutgoingAudioStream()
+        incomingStreams.values.forEach { runCatching { it.close() } }
+        incomingStreams.clear()
+    }
+
+    private fun readAudioStream(endpointId: String, payload: Payload) {
+        incomingStreams[payload.id] = payload
+        streamExecutor.execute {
+            try {
+                val stream = checkNotNull(payload.asStream()) { "AUDIO_STREAM_UNAVAILABLE" }
+                val input = DataInputStream(BufferedInputStream(stream.asInputStream()))
+                while (running && activeEndpoint == endpointId) {
+                    val size = input.readInt()
+                    require(size in 1..MAX_STREAM_FRAME_BYTES) { "INVALID_AUDIO_FRAME_SIZE:$size" }
+                    val bytes = ByteArray(size)
+                    input.readFully(bytes)
+                    eventListener(NearbyEvent.PayloadReceived(endpointId, bytes))
+                }
+            } catch (_: EOFException) {
+                // Normal when a peer stops or replaces its stream.
+            } catch (error: Throwable) {
+                if (running && activeEndpoint == endpointId) {
+                    fail("AUDIO_STREAM_READ_FAILED", Exception(error))
+                }
+            } finally {
+                incomingStreams.remove(payload.id)
+                runCatching { payload.close() }
+            }
+        }
     }
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
@@ -163,18 +309,26 @@ class NearbyConnectionManager(
 
         override fun onDisconnected(endpointId: String) {
             activeEndpoint = null
+            resetAudioStreams()
             peers[endpointId]?.let {
                 it.state = ConnectionState.DISCONNECTED
                 eventListener(NearbyEvent.PeerChanged(it))
             }
-            eventListener(NearbyEvent.Disconnected(endpointId))
-            restartDiscovery()
+            if (running) {
+                eventListener(NearbyEvent.Disconnected(endpointId))
+                restartDiscovery()
+            }
         }
     }
 
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
-            payload.asBytes()?.let { eventListener(NearbyEvent.PayloadReceived(endpointId, it)) }
+            when (payload.type) {
+                Payload.Type.BYTES -> payload.asBytes()?.let {
+                    eventListener(NearbyEvent.PayloadReceived(endpointId, it))
+                }
+                Payload.Type.STREAM -> readAudioStream(endpointId, payload)
+            }
         }
 
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) = Unit
@@ -202,5 +356,9 @@ class NearbyConnectionManager(
     companion object {
         const val SERVICE_ID = "com.lideatech.ridelink"
         private val STRATEGY = Strategy.P2P_POINT_TO_POINT
+        private const val STREAM_PIPE_BYTES = 16 * 1024
+        private const val MAX_STREAM_FRAME_BYTES = 8 * 1024
+        private const val AUDIO_QUEUE_CAPACITY = 3
+        private const val WRITER_POLL_MS = 100L
     }
 }

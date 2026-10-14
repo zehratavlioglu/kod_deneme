@@ -24,7 +24,7 @@ class RideLinkRuntime private constructor(private val context: Context) {
     private val nearby = NearbyConnectionManager(context, ::onNearbyEvent)
     private val audio = AudioSessionManager(
         devices = devices,
-        sender = nearby::send,
+        sender = nearby::sendAudio,
         onTelemetry = {
             telemetry = it
             emitStatus("Ses telemetrisi güncellendi")
@@ -70,13 +70,13 @@ class RideLinkRuntime private constructor(private val context: Context) {
 
     fun stop() {
         isRiding = false
-        audio.stop()
-        nearby.stop()
-        devices.clearRoute()
         connectionState = "idle"
         activeEndpoint = null
         activeSession = null
         peerName = null
+        nearby.stop()
+        audio.stop()
+        devices.clearRoute()
         emitStatus("Sürüş modu durduruldu")
     }
 
@@ -93,13 +93,12 @@ class RideLinkRuntime private constructor(private val context: Context) {
     }
 
     fun disconnect(userInitiated: Boolean) {
-        sendControl("DISCONNECT")
-        audio.stop()
-        nearby.disconnect()
         connectionState = "disconnected"
         peerName = null
         activeEndpoint = null
         activeSession = null
+        nearby.disconnect()
+        audio.stop()
         emitStatus(if (userInitiated) "Görüşme sonlandırıldı" else "Bağlantı kesildi")
     }
 
@@ -169,7 +168,7 @@ class RideLinkRuntime private constructor(private val context: Context) {
                 sendControl(
                     "CAPABILITIES",
                     mapOf(
-                        "sampleRate" to 16_000,
+                        "sampleRate" to 48_000,
                         "codec" to "opus",
                         "frameMs" to 20,
                     ),

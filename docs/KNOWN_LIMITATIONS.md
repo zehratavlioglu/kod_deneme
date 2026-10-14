@@ -10,3 +10,9 @@
 - `permission_handler` 13.0.2, mevcut SDK yöneticisinin `android-37.0` paketi ile eklentinin beklediği `android-37` kimliği uyuşmadığı için derlenemedi; derlenebilir 12.0.1 sürümüne sabitlendi.
 - Flutter 3.44.6 kurulumu özel/unknown channel üzerindedir ve bazı Android SDK lisansları kabul edilmemiştir. Debug derleme başarılı olsa da CI/üretim ortamı resmî stable channel kullanmalıdır.
 - Log dışa aktarma ve hassas veri redaksiyonlu dosya üretimi henüz uygulanmadı; UI son 100 olayı bellekte tutar.
+
+## Düzeltilen saha sorunları
+
+- `DISCOVERY_FAILED 8032 / MISSING_PERMISSION_ACCESS_WIFI_STATE`: Wi-Fi durum izinlerindeki hatalı `maxSdkVersion=31` sınırı kaldırıldı.
+- Eşleşme sonrasında ses telemetrisi arka plan thread'inden Flutter `EventChannel`'ına gönderildiğinde oluşan `@UiThread` çökmesi giderildi; tüm native olaylar ana looper üzerinden yayınlanıyor.
+- Android 11 ve altındaki cihazlarda Nearby için gereken konum izninin Flutter akışında istenmemesi giderildi; izin yalnız eski sürümlerde manifest kapsamına giriyor.

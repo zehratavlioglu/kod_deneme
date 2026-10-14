@@ -5,9 +5,9 @@ RideLink, iki Android telefonun Google Nearby Connections üzerinden internetsiz
 ## Durum
 
 - Flutter Material 3 arayüzü ve Riverpod durum yönetimi: uygulandı.
-- Native Bluetooth iletişim cihazı tespiti ve ses rotası: uygulandı, gerçek interkomda **NOT TESTED**.
-- Nearby P2P_POINT_TO_POINT keşif/advertising/bağlantı: uygulandı, iki telefonda **NOT TESTED**.
-- Native AudioRecord/AudioTrack ve cihaz MediaCodec Opus hattı: uygulandı, cihaz codec desteği ve gerçek ses **NOT TESTED**.
+- Native Bluetooth iletişim cihazı tespiti ve ses rotası: uygulandı; telefon hoparlörü test rotası fiziksel cihazlarda **PASS**, gerçek Bluetooth interkom **NOT TESTED**.
+- Nearby P2P_POINT_TO_POINT keşif/advertising/bağlantı: Nothing A063 (Android 15) ve Samsung SM-M127F (Android 11) ile **PASS**.
+- Native AudioRecord/AudioTrack ve MediaCodec Opus hattı: iki telefonda çift yönlü anlaşılır ses **PASS**; Samsung gecikme optimizasyonunun son kullanıcı doğrulaması sürüyor.
 - Foreground service (`connectedDevice|microphone`): uygulandı, ekran kapalı davranışı **NOT TESTED**.
 - Debug APK derlemesi: **PASS** — `build/app/outputs/flutter-apk/app-debug.apk`.
 
@@ -58,3 +58,4 @@ Bu depo özel olsa bile Android keystore dosyaları, `key.properties`, `.env` do
 - [Test planı ve güncel sonuçlar](docs/TEST_PLAN.md)
 - [Bilinen sınırlamalar](docs/KNOWN_LIMITATIONS.md)
 - [Play Store kontrol listesi](docs/PLAY_STORE_CHECKLIST.md)
+- [Değişiklik günlüğü](CHANGELOG.md)

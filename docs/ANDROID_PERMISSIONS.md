@@ -1,5 +1,6 @@
 # Android izinleri
 
+- Tüm sürümler: Nearby radyo durumunu okuyup bağlantı taşıyıcısını yönetebilmek için normal izinler `ACCESS_WIFI_STATE` ve `CHANGE_WIFI_STATE`. Bunlar `maxSdkVersion` ile sınırlandırılmamalıdır; aksi halde yeni Android sürümlerinde Nearby `8032 / MISSING_PERMISSION_ACCESS_WIFI_STATE` hatası verir.
 - API 26–28: Nearby keşfi için `ACCESS_COARSE_LOCATION`.
 - API 29–31: `ACCESS_FINE_LOCATION`.
 - API 31+: `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`.
@@ -11,3 +12,5 @@
 Uygulama konum verisi üretmez veya saklamaz; bu nedenle Bluetooth ve Wi‑Fi yakındaki cihaz izinlerinde `neverForLocation` beyan edilir. Android 11 ve altındaki Nearby gereksinimi nedeniyle eski sürümlerde konum izni yine istenir.
 
 Mikrofon foreground service'i yalnızca kullanıcı uygulama görünürken “Sürüş Modunu Başlat” düğmesine bastığında başlatılır.
+
+Flutter izin akışı `locationWhenInUse` isteğini de gönderir. Manifestteki `maxSdkVersion` nedeniyle bu istek yalnız eski Android sürümlerinde etkili olur; Android 12+ cihazlarda gereksiz konum erişimi verilmez.

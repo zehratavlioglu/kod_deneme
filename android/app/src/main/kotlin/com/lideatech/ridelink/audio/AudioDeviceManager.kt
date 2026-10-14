@@ -41,8 +41,21 @@ class AudioDeviceManager(context: Context) {
 
     fun selectCommunicationRoute(debugPhoneAudio: Boolean): Boolean {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (debugPhoneAudio) {
+            return if (Build.VERSION.SDK_INT >= 31) {
+                val speaker = audioManager.availableCommunicationDevices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                }
+                speaker != null && audioManager.setCommunicationDevice(speaker)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = true
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn
+            }
+        }
         val route = bluetoothCommunicationRoute()
-        if (route == null) return debugPhoneAudio
+        if (route == null) return false
         return if (Build.VERSION.SDK_INT >= 31) {
             route.device != null && audioManager.setCommunicationDevice(route.device)
         } else {
@@ -62,6 +75,8 @@ class AudioDeviceManager(context: Context) {
             audioManager.stopBluetoothSco()
             @Suppress("DEPRECATION")
             audioManager.isBluetoothScoOn = false
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = false
         }
         audioManager.mode = AudioManager.MODE_NORMAL
     }
