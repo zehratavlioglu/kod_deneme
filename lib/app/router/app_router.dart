@@ -1,7 +1,13 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../features/riding_session/presentation/screens/home_screen.dart';
+import 'package:ridelink/features/auth/pages/login_page.dart'; // Paket yolu kullanarak doğrudan bağlıyoruz
 
 final appRouter = GoRouter(
-  routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())],
+  initialLocation: '/',
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, state) => LoginPage(),
+    ),
+  ],
 );

@@ -1,9 +1,22 @@
-import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'app/app.dart';
+import 'package:flutter/material.dart';
+import 'app/router/app_router.dart'; // go_router dosyamızı buraya bağlıyoruz
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: RideLinkApp()));
+  runApp(const RideLinkApp());
+}
+
+class RideLinkApp extends StatelessWidget {
+  const RideLinkApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp.router(
+      title: 'RideLink',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+      ),
+      routerConfig: appRouter, // MaterialApp.router kullanarak rotaları appRouter'dan alıyoruz
+    );
+  }
 }
