@@ -22,8 +22,6 @@ class LoginPage extends StatelessWidget {
           Container(
             color: RideLinkColors.darkBackground.withOpacity(0.55),
           ),
-
-          // 2. Sayfa İçeriği
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
@@ -40,7 +38,7 @@ class LoginPage extends StatelessWidget {
                         width: 88,
                         height: 88,
                         decoration: BoxDecoration(
-                          color: RideLinkColors.darkSurface.withOpacity(0.85),
+                          color: RideLinkColors.darkSurface,
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: RideLinkColors.darkPrimary.withOpacity(0.5), 
@@ -48,21 +46,17 @@ class LoginPage extends StatelessWidget {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: RideLinkColors.darkPrimary.withOpacity(0.2),
+                              color: RideLinkColors.darkPrimary.withOpacity(0.3),
                               blurRadius: 20,
                               spreadRadius: 2,
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.cell_tower,
-                          color: RideLinkColors.darkPrimary,
-                          size: 44,
+                        child: CustomPaint(
+                          painter: RadarLogoPainter(color: RideLinkColors.darkPrimary),
                         ),
                       ),
-                      
                       const SizedBox(height: 20),
-
                       const Text(
                         AppStrings.appName,
                         style: TextStyle(
@@ -72,17 +66,7 @@ class LoginPage extends StatelessWidget {
                           letterSpacing: 3.0,
                         ),
                       ),
-                      
                       const SizedBox(height: 8),
-                      
-                      Text(
-                        'Çevrimdışı ve Güvenli Sürüş Ağı',
-                        style: TextStyle(
-                          color: RideLinkColors.darkText.withOpacity(0.8),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
                     ],
                   ),
 
@@ -92,25 +76,17 @@ class LoginPage extends StatelessWidget {
                       AuthButton(
                         text: AppStrings.continueWithGoogle,
                         icon: Icons.g_mobiledata,
-                        backgroundColor: RideLinkColors.lightSurface,
-                        textColor: RideLinkColors.lightText,
-                        onPressed: () {
-                          // Google ile giriş aksiyonu
-                        },
+                        iconSize: 32.0, 
+                        onPressed: () {},
                       ),
-                      
-                      const SizedBox(height: 16),
-
+                      const SizedBox(height: 20),
                       AuthButton(
                         text: AppStrings.continueWithApple,
                         icon: Icons.apple,
-                        backgroundColor: RideLinkColors.lightSurface,
-                        textColor: RideLinkColors.lightText,
-                        onPressed: () {
-                          // Apple ile giriş aksiyonu
-                        },
+                        iconSize: 32.0, 
+                        onPressed: () {},
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 50),
                     ],
                   ),
                 ],
@@ -121,4 +97,47 @@ class LoginPage extends StatelessWidget {
       ),
     );
   }
+}
+
+// İki tarafa simetrik bakan yayları ve parlayan noktayı çizen güncellenmiş painter
+class RadarLogoPainter extends CustomPainter {
+  final Color color;
+  RadarLogoPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final center = Offset(size.width / 2, size.height / 2);
+
+    // Sağ İç Yay
+    canvas.drawArc(Rect.fromCircle(center: center, radius: 14), -0.8, 1.6, false, paint);
+    // Sol İç Yay
+    canvas.drawArc(Rect.fromCircle(center: center, radius: 14), 2.3, 1.6, false, paint);
+
+    // Sağ Dış Yay
+    canvas.drawArc(Rect.fromCircle(center: center, radius: 24), -0.8, 1.6, false, paint);
+    // Sol Dış Yay
+    canvas.drawArc(Rect.fromCircle(center: center, radius: 24), 2.3, 1.6, false, paint);
+
+    // Merkezdeki parlayan nokta
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, 5.5, dotPaint);
+
+    // Noktanın etrafındaki parıltı (Glow) efekti
+    final glowPaint = Paint()
+      ..color = color.withOpacity(0.4)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    
+    canvas.drawCircle(center, 8, glowPaint);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

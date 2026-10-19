@@ -1,4 +1,4 @@
-/*import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/riding_session_controller.dart';
@@ -236,4 +236,3 @@ class _StatusRow extends StatelessWidget {
     ),
   );
 }
-*/
